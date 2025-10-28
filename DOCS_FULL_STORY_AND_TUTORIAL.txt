@@ -91,7 +91,7 @@ I prioritized making extraction productive (heuristics-first fallback), and maki
 
 This tutorial assumes you're on Windows (PowerShell) and you have the repository workspace at:
 
-C:\Users\MikePinku\Documents\Visual Code Studio Projects\Github Projects\Roblox rbxl extractor
+C:\Users\anonymous\Documents\Visual Code Studio Projects\Github Projects\Roblox rbxl extractor
 
 If your workspace is in a different location, adapt the paths.
 
@@ -145,7 +145,7 @@ What the CLI does:
 After the CLI runs successfully, check the extracted folder next to your RBXL file. Example:
 
 ```
-C:\Users\MikePinku\Downloads\Phone Link\extracted\
+C:\Users\anonymous\Downloads\Phone Link\extracted\
   Scripts\
     script_0.lua
     script_1.lua
@@ -425,17 +425,17 @@ Compress-Archive -Path "C:/path/to/extracted/*" -DestinationPath "C:/path/to/ext
 .\\.venv\\Scripts\\Activate.ps1
 
 # run extractor for scripts and images
-python -m rbxl_extractor.cli "C:\Users\MikePinku\Downloads\Phone Link\Place_137283905857565.rbxl" --scripts --images
+python -m rbxl_extractor.cli "C:\Users\anonymous\Downloads\Phone Link\Place_137283905857565.rbxl" --scripts --images
 
 # optionally inspect debug output (if parser issues are suspected)
 $env:RBX_PARSER_DEBUG=1
-python -m rbxl_extractor.cli "C:\Users\MikePinku\Downloads\Phone Link\Place_137283905857565.rbxl" --scripts --images
+python -m rbxl_extractor.cli "C:\Users\anonymous\Downloads\Phone Link\Place_137283905857565.rbxl" --scripts --images
 
 # run the smoke-test
 python tools/test_extractor.py
 
 # package results
-Compress-Archive -Path "C:/Users/MikePinku/Downloads/Phone Link/extracted/*" -DestinationPath "C:/Users/MikePinku/Downloads/Phone Link/extracted.zip" -Force
+Compress-Archive -Path "C:/Users/anonymous/Downloads/Phone Link/extracted/*" -DestinationPath "C:/Users/anonymous/Downloads/Phone Link/extracted.zip" -Force
 ```
 
 12) How to contribute and next steps (for you or me)
@@ -523,3 +523,4 @@ Looking forward
 A decade later the extractor is a pragmatic tool with clear improvement paths: finish more value-type implementations, improve token-version detection, add overlap-based merging for scripts, and expand tests. The design principles that served the project — incrementalism, layered fallback, and reproducible diagnostics — still apply.
 
 If you'd like me to continue working on this project, tell me which direction you prefer and I will proceed.
+
