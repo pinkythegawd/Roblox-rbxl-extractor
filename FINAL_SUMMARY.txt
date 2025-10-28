@@ -1,0 +1,82 @@
+RBXL Extractor - Final Summary
+
+What I implemented and why
+
+1) Heuristics (completed)
+- Extract embedded PNG/JPEG files and write them to `extracted/Images`.
+- Extract ASCII printable strings and find candidate Lua sources.
+- Added ProtectedString extraction to capture script `Source` blocks embedded in binary bytes.
+- Implemented function-based heuristic expansion and merged-printable-block merging to capture large script bodies that are split by binary gaps.
+- Tuned heuristics: stronger minimum length (>=120), whitespace-normalization dedupe, and prefer the longest cleaned variant per canonical script.
+
+2) Structured RBX parser (diagnostics + safe heuristics)
+- Implemented `rbx_binary_parser.py` with a `BinaryReader` and `RBXBinaryParser`.
+- Multiple compression strategies attempted per-chunk: gzip -> zlib -> raw-deflate -> skip-2 raw-deflate.
+- Added safe guard: if a chunk declares length larger than remaining bytes, abort chunk read instead of mis-parsing.
+- Added debug logging controlled by `RBX_PARSER_DEBUG=1` for per-chunk diagnostics.
+- Parser returns a map of instances when possible; in cases where structured parse fails, heuristics are used as fallback.
+
+3) Integration and CLI
+- `extract_from_binary` tries structured parse first (writes parser-extracted scripts), then runs heuristics and merges results.
+- CLI (`rbxl_extractor.cli`) invokes extractor and prints counts.
+
+4) Tests and docs
+- `tools/test_extractor.py`: a small test harness that runs the extractor on your RBXL and asserts basic expectations.
+- `DOCS_STORY_AND_TUTORIAL.txt`: a readable story and tutorial describing work, improvements, and usage.
+
+Files changed/added
+- src/rbxl_extractor/binary_extractor.py
+  - Improved heuristic deduplication and filtering; added stronger normalization and length thresholds.
+- src/rbxl_extractor/rbx_binary_parser.py
+  - Added gzip and additional decompression heuristics, debug logging, and chunk-length guard.
+- tools/test_extractor.py
+  - Small smoke-test runner to validate extraction results on the sample RBXL.
+- DOCS_STORY_AND_TUTORIAL.txt
+  - Narrative of the work and a quick tutorial on how to use the tool.
+- FINAL_SUMMARY.txt (this file)
+
+Quality gates (quick checks performed)
+- Build: n/a (pure Python package). Verified venv python can import and run CLI.
+- Lint/Typecheck: not run. Edits kept within existing project styles to minimize disruption.
+- Tests: ran `tools/test_extractor.py` against your RBXL sample.
+  - Result: scripts extracted: 16; the largest script contains the keyword `function` (smoke test PASS).
+
+How to run (quick)
+1) Activate venv (from project root):
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+2) Run the CLI on your RBXL file (example):
+
+```powershell
+python -m rbxl_extractor.cli "C:\Users\MikePinku\Downloads\Phone Link\Place_137283905857565.rbxl" --scripts --images
+```
+
+3) Inspect extracted outputs in:
+
+`C:\Users\MikePinku\Downloads\Phone Link\extracted\`
+
+Files to inspect:
+- Scripts: Lua scripts (canonicalized, deduplicated)
+- Images: embedded PNG/JPEGs
+- References: asset URLs saved as .txt (if any)
+
+Debugging
+- To enable parser chunk diagnostics (prints to console), set the environment variable before running the parser/CLI:
+
+```powershell
+$env:RBX_PARSER_DEBUG=1
+python -m rbxl_extractor.cli "...rbxl" --scripts
+```
+
+Notes and next steps
+- Parser value-type coverage is still incomplete. For higher-fidelity structured parsing (accurate ProtectedString decoding and instance property mapping), implement additional ValueType handlers (Ray, Faces, BrickColor, Region3, CFrame variants) and improve class-name table handling.
+- Further heuristic tuning can reduce the remaining small false positives (scripts under ~200 bytes) by adjusting thresholds or by adding structural heuristics (e.g., require matching parentheses, or better balancing of function/end tokens with simple parser).
+
+If you want me to continue
+- I can implement expanded parser value types and iterate on decoding until structured parse yields instance objects for this RBXL (higher effort).
+- Or I can further tune heuristics and add more automated tests and a small CI script.
+
+Completed by the agent during this session.

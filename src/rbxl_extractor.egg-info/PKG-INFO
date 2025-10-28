@@ -1,0 +1,63 @@
+Metadata-Version: 2.4
+Name: rbxl-extractor
+Version: 1.0.0
+Summary: A tool to extract assets from Roblox .rbxl files
+Author: Your Name
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: robloxpy
+Requires-Dist: pillow
+Dynamic: author
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# Roblox RBXL Asset Extractor
+
+A Windows application that extracts assets (models, scripts, sounds, etc.) from Roblox .rbxl place files.
+
+## Features
+
+- Extract models from .rbxl files
+- Extract scripts (Lua/LuaU)
+- Extract sounds and other media assets
+- User-friendly GUI interface
+- Easy to use file selection
+- Organized output structure
+
+## Installation
+
+1. Ensure you have Python 3.8 or newer installed
+2. Clone this repository
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+## Usage
+
+1. Run the application:
+```bash
+python src/main.py
+```
+
+2. Click "Open File" to select a .rbxl file
+3. Choose which types of assets to extract
+4. Select output directory
+5. Click "Extract" to begin the extraction process
+
+## Building Executable
+
+To create a standalone executable:
+
+```bash
+pyinstaller --onefile --windowed src/main.py
+```
+
+The executable will be created in the `dist` directory.
+
+## License
+
+MIT License

@@ -1,0 +1,12 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build Executable",
+			"type": "shell",
+			"command": "\"C:/Users/MikePinku/Documents/Visual Code Studio Projects/Github Projects/Roblox rbxl extractor/.venv/Scripts/pyinstaller.exe\" --onefile --windowed src/main.py",
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}

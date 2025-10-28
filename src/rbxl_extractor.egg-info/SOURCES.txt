@@ -1,0 +1,12 @@
+README.md
+setup.py
+src/rbxl_extractor/__init__.py
+src/rbxl_extractor/binary_extractor.py
+src/rbxl_extractor/extractor.py
+src/rbxl_extractor/rbx_binary_parser.py
+src/rbxl_extractor.egg-info/PKG-INFO
+src/rbxl_extractor.egg-info/SOURCES.txt
+src/rbxl_extractor.egg-info/dependency_links.txt
+src/rbxl_extractor.egg-info/entry_points.txt
+src/rbxl_extractor.egg-info/requires.txt
+src/rbxl_extractor.egg-info/top_level.txt

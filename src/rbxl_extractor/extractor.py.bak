@@ -1,0 +1,629 @@
+import os
+import json
+from typing import Dict, Any, List, Optional, Any, BinaryIO, Union
+import xml.etree.ElementTree as ET
+import base64
+import gzip
+import io
+import shutil
+
+class RobloxExtractor:
+    def __init__(self, file_path: str, output_path: str, progress_var: Optional[Any] = None, status_var: Optional[Any] = None):
+        """Initialize the RobloxExtractor.
+        
+        Args:
+            file_path: Path to the .rbxl file to extract
+            output_path: Directory where extracted assets will be saved
+            progress_var: Optional variable for progress updates (0-100)
+            status_var: Optional variable for status message updates
+        """
+        self.file_path = file_path
+        self.output_path = output_path
+        self.progress_var = progress_var
+        self.status_var = status_var
+        
+    def update_progress(self, value: float, status: Optional[str] = None) -> None:
+        """Update the progress bar and status message.
+        
+        Args:
+            value: Progress value between 0 and 100
+            status: Optional status message to display
+        """
+        if self.progress_var:
+            self.progress_var.set(value)
+        if status and self.status_var:
+            self.status_var.set(status)
+            print(status)  # Also print to console for debugging
+            
+    def extract_content(self, xml_root: ET.Element, content_type: str, output_dir: str) -> List[str]:
+        """Extract specific content from XML elements.
+        
+        Args:
+            xml_root: Root XML element
+            content_type: Type of content to extract ("scripts", "models", "sounds", "images")
+            output_dir: Directory where to save extracted content
+            
+        Returns:
+            List of paths to extracted files
+        """
+        items = []
+        
+        # Define what to look for based on content type
+        if content_type == "scripts":
+            elements = xml_root.findall(".//Script") + xml_root.findall(".//LocalScript")
+            ext = ".lua"
+        elif content_type == "models":
+            elements = xml_root.findall(".//Model") + xml_root.findall(".//Part")
+            ext = ".model"
+        elif content_type == "sounds":
+            elements = xml_root.findall(".//Sound")
+            ext = ".rbxm"
+        elif content_type == "images":
+            elements = xml_root.findall(".//Decal") + xml_root.findall(".//Texture")
+            ext = ".png"
+        else:
+            elements = []
+            
+        # Create output directory
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Process each element
+        for i, elem in enumerate(elements):
+            try:
+                name = elem.get("Name", "")
+                if not name:
+                    name = f"{elem.tag}_{i}"
+                    
+                if content_type == "scripts":
+                    # Find the Source property
+                    source = elem.find(".//ProtectedString[@name='Source']")
+                    if source is not None and source.text:
+                        content = source.text
+                    else:
+                        content = ""
+                        
+                elif content_type == "models":
+                    # Save model element as XML
+                    content = ET.tostring(elem, encoding="unicode", method="xml")
+                    
+                elif content_type == "sounds":
+                    # Save sound reference
+                    content = elem.get("SoundId", "")
+                    
+                elif content_type == "images":
+                    # Save texture/decal reference
+                    content = elem.get("TextureId", "") or elem.get("Texture", "")
+                    
+                else:
+                    content = ""
+                    
+                # Save to file if we have content
+                if content:
+                    safe_name = "".join(c if c.isalnum() or c in ".-_ " else "_" for c in name)
+                    file_path = os.path.join(output_dir, f"{safe_name}{ext}")
+                    
+                    # Handle duplicate names
+                    base_path = file_path
+                    counter = 1
+                    while os.path.exists(file_path):
+                        file_path = base_path[:-len(ext)] + f"_{counter}" + ext
+                        counter += 1
+                    
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    items.append(file_path)
+                    print(f"Extracted: {os.path.basename(file_path)}")
+                    
+            except Exception as e:
+                print(f"Error extracting {content_type} item {i}: {e}")
+                
+        if items:
+            print(f"\nExtracted {len(items)} {content_type}")
+        else:
+            print(f"\nNo {content_type} found to extract")
+            
+        return items
+            
+    def extract(self, options: Dict[str, bool]) -> None:
+        """Extract assets from the RBXL file.
+        
+        Args:
+            options: Dictionary of what to extract (scripts, models, sounds, images)
+        """
+        try:
+            self.update_progress(0, "Reading RBXL file...")
+            
+            if not os.path.exists(self.file_path):
+                raise FileNotFoundError(f"RBXL file not found: {self.file_path}")
+                
+            # Create base output directory
+            os.makedirs(self.output_path, exist_ok=True)
+            
+            # First, try to read the file as a gzipped XML
+            with open(self.file_path, 'rb') as f:
+                # Read file header
+                header = f.read(8)
+                print(f"File header: {header!r}")
+                if not header.startswith(b'<roblox'):
+                    raise ValueError("Invalid RBXL file: Not a Roblox place file")
+                
+                # Go back to start
+                f.seek(0)
+                
+                # Try both gzipped and plain formats
+                try:
+                    # Try to decompress with gzip
+                    self.update_progress(10, "Attempting to decompress file...")
+                    with gzip.GzipFile(fileobj=f) as gz:
+                        xml_content = gz.read().decode('utf-8')
+                        print("Successfully decompressed gzipped content")
+                except Exception as e:
+                    # If gzip fails, try reading as plain XML
+                    print(f"Gzip decompression failed: {e}")
+                    print("Trying plain XML format...")
+                    f.seek(0)
+                    xml_content = f.read().decode('utf-8')
+                    print("Successfully read plain XML content")
+                    
+            # Parse the XML
+            self.update_progress(30, "Parsing file structure...")
+            try:
+                root = ET.fromstring(xml_content)
+                print("Successfully parsed XML structure")
+            except ET.ParseError as e:
+                raise ValueError(f"Failed to parse RBXL file: {e}")
+                
+            # Extract requested content types
+            if options.get('scripts', False):
+                self.update_progress(50, "Extracting scripts...")
+                scripts_dir = os.path.join(self.output_path, "Scripts")
+                self.extract_content(root, "scripts", scripts_dir)
+                
+            if options.get('models', False):
+                self.update_progress(60, "Extracting models...")
+                models_dir = os.path.join(self.output_path, "Models")
+                self.extract_content(root, "models", models_dir)
+                
+            if options.get('sounds', False):
+                self.update_progress(70, "Extracting sounds...")
+                sounds_dir = os.path.join(self.output_path, "Sounds")
+                self.extract_content(root, "sounds", sounds_dir)
+                
+            if options.get('images', False):
+                self.update_progress(80, "Extracting images...")
+                images_dir = os.path.join(self.output_path, "Images")
+                self.extract_content(root, "images", images_dir)
+                
+            self.update_progress(100, "Extraction complete!")
+            
+        except Exception as e:
+            self.update_progress(0, f"Error: {str(e)}")
+            raise
+    def __init__(self, file_path: str, output_path: str, progress_var: Optional[Any] = None, status_var: Optional[Any] = None):
+        """Initialize the RobloxExtractor.
+        
+        Args:
+            file_path: Path to the .rbxl file to extract
+            output_path: Directory where extracted assets will be saved
+            progress_var: Optional variable for progress updates (0-100)
+            status_var: Optional variable for status message updates
+        """
+        self.file_path = file_path
+        self.output_path = output_path
+        self.progress_var = progress_var
+        self.status_var = status_var
+        
+    def update_progress(self, value: float, status: Optional[str] = None) -> None:
+        """Update the progress bar and status message.
+        
+        Args:
+            value: Progress value between 0 and 100
+            status: Optional status message to display
+        """
+        if self.progress_var:
+            self.progress_var.set(value)
+        if status and self.status_var:
+            self.status_var.set(status)
+            print(status)  # Also print to console for debugging
+            
+    def extract_content(self, xml_root: ET.Element, content_type: str, output_dir: str) -> List[str]:
+        """Extract specific content from XML elements."""
+        items = []
+        
+        # Define what to look for based on content type
+        if content_type == "scripts":
+            elements = xml_root.findall(".//Script") + xml_root.findall(".//LocalScript")
+            ext = ".lua"
+        elif content_type == "models":
+            elements = xml_root.findall(".//Model") + xml_root.findall(".//Part")
+            ext = ".model"
+        elif content_type == "sounds":
+            elements = xml_root.findall(".//Sound")
+            ext = ".rbxm"
+        elif content_type == "images":
+            elements = xml_root.findall(".//Decal") + xml_root.findall(".//Texture")
+            ext = ".png"
+        else:
+            elements = []
+            
+        # Create output directory
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Process each element
+        for i, elem in enumerate(elements):
+            try:
+                name = elem.get("Name", "")
+                if not name:
+                    name = f"{elem.tag}_{i}"
+                    
+                if content_type == "scripts":
+                    # Find the Source property
+                    source = elem.find(".//ProtectedString[@name='Source']")
+                    if source is not None and source.text:
+                        content = source.text
+                    else:
+                        content = ""
+                        
+                elif content_type == "models":
+                    # Save model element as XML
+                    content = ET.tostring(elem, encoding="unicode", method="xml")
+                    
+                elif content_type == "sounds":
+                    # Save sound reference
+                    content = elem.get("SoundId", "")
+                    
+                elif content_type == "images":
+                    # Save texture/decal reference
+                    content = elem.get("TextureId", "") or elem.get("Texture", "")
+                    
+                else:
+                    content = ""
+                    
+                # Save to file if we have content
+                if content:
+                    safe_name = "".join(c if c.isalnum() or c in ".-_ " else "_" for c in name)
+                    file_path = os.path.join(output_dir, f"{safe_name}{ext}")
+                    
+                    # Handle duplicate names
+                    base_path = file_path
+                    counter = 1
+                    while os.path.exists(file_path):
+                        file_path = base_path[:-len(ext)] + f"_{counter}" + ext
+                        counter += 1
+                    
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    items.append(file_path)
+                    print(f"Extracted: {os.path.basename(file_path)}")
+                    
+            except Exception as e:
+                print(f"Error extracting {content_type} item {i}: {e}")
+                
+        if items:
+            print(f"\nExtracted {len(items)} {content_type}")
+        else:
+            print(f"\nNo {content_type} found to extract")
+            
+        return items
+            
+    def extract(self, options: Dict[str, bool]):
+        """Extract assets from the RBXL file."""
+        try:
+            self.update_progress(0, "Reading RBXL file...")
+            
+            if not os.path.exists(self.file_path):
+                raise FileNotFoundError(f"RBXL file not found: {self.file_path}")
+                
+            # Create base output directory
+            os.makedirs(self.output_path, exist_ok=True)
+            
+            # First, try to read the file as a gzipped XML
+            with open(self.file_path, 'rb') as f:
+                # Read file header
+                header = f.read(8)
+                if not header.startswith(b'<roblox'):
+                    raise ValueError("Invalid RBXL file: Not a Roblox place file")
+                
+                # Go back to start
+                f.seek(0)
+                
+                try:
+                    # Try to decompress with gzip
+                    self.update_progress(10, "Decompressing file...")
+                    with gzip.GzipFile(fileobj=f) as gz:
+                        xml_content = gz.read().decode('utf-8')
+                except:
+                    # If gzip fails, try reading as plain XML
+                    f.seek(0)
+                    xml_content = f.read().decode('utf-8')
+                    
+            # Parse the XML
+            self.update_progress(30, "Parsing file structure...")
+            try:
+                root = ET.fromstring(xml_content)
+            except ET.ParseError as e:
+                raise ValueError(f"Failed to parse RBXL file: {e}")
+                
+            # Extract requested content types
+            if options.get('scripts', False):
+                self.update_progress(50, "Extracting scripts...")
+                scripts_dir = os.path.join(self.output_path, "Scripts")
+                self.extract_content(root, "scripts", scripts_dir)
+                
+            if options.get('models', False):
+                self.update_progress(60, "Extracting models...")
+                models_dir = os.path.join(self.output_path, "Models")
+                self.extract_content(root, "models", models_dir)
+                
+            if options.get('sounds', False):
+                self.update_progress(70, "Extracting sounds...")
+                sounds_dir = os.path.join(self.output_path, "Sounds")
+                self.extract_content(root, "sounds", sounds_dir)
+                
+            if options.get('images', False):
+                self.update_progress(80, "Extracting images...")
+                images_dir = os.path.join(self.output_path, "Images")
+                self.extract_content(root, "images", images_dir)
+                
+            self.update_progress(100, "Extraction complete!")
+            
+        except Exception as e:
+            self.update_progress(0, f"Error: {str(e)}")
+            raise
+
+    def extract(self, options: Dict[str, bool]) -> None:
+        """Extract assets from the RBXL file."""
+        try:
+            self.update_progress(0, "Reading RBXL file...")
+            
+            if not os.path.exists(self.file_path):
+                raise FileNotFoundError(f"RBXL file not found: {self.file_path}")
+                
+            # Create base output directory
+            os.makedirs(self.output_path, exist_ok=True)
+            
+            # First, try to read the file as a gzipped XML
+            with open(self.file_path, 'rb') as f:
+                # Read file header
+                header = f.read(8)
+                if not header.startswith(b'<roblox'):
+                    raise ValueError("Invalid RBXL file: Not a Roblox place file")
+                
+                # Go back to start
+                f.seek(0)
+                
+                try:
+                    # Try to decompress with gzip
+                    self.update_progress(10, "Decompressing file...")
+                    with gzip.GzipFile(fileobj=f) as gz:
+                        xml_content = gz.read().decode('utf-8')
+                except:
+                    # If gzip fails, try reading as plain XML
+                    f.seek(0)
+                    xml_content = f.read().decode('utf-8')
+                    
+            # Parse the XML
+            self.update_progress(30, "Parsing file structure...")
+            try:
+                root = ET.fromstring(xml_content)
+            except ET.ParseError as e:
+                raise ValueError(f"Failed to parse RBXL file: {e}")
+                
+            # Extract requested content types
+            if options.get('scripts', False):
+                self.update_progress(50, "Extracting scripts...")
+                scripts_dir = os.path.join(self.output_path, "Scripts")
+                self.extract_content(root, "scripts", scripts_dir)
+                
+            if options.get('models', False):
+                self.update_progress(60, "Extracting models...")
+                models_dir = os.path.join(self.output_path, "Models")
+                self.extract_content(root, "models", models_dir)
+                
+            if options.get('sounds', False):
+                self.update_progress(70, "Extracting sounds...")
+                sounds_dir = os.path.join(self.output_path, "Sounds")
+                self.extract_content(root, "sounds", sounds_dir)
+                
+            if options.get('images', False):
+                self.update_progress(80, "Extracting images...")
+                images_dir = os.path.join(self.output_path, "Images")
+                self.extract_content(root, "images", images_dir)
+                
+            self.update_progress(100, "Extraction complete!")
+            
+        except Exception as e:
+            self.update_progress(0, f"Error: {str(e)}")
+            raise
+            
+        # Find the start of compressed data
+        while True:
+            chunk_type = file.read(1)
+            if not chunk_type:
+                raise ValueError("End of file reached before finding compressed data")
+            
+            if chunk_type == b'B':  # COMPRESSED_BLOCKS marker
+                break
+            
+            # Skip other chunks
+            chunk_size = self.read_uint32(file)
+            file.read(chunk_size)
+        
+        # Read compressed block
+        compressed_size = self.read_uint32(file)
+        print(f"Compressed data size: {compressed_size}")
+        compressed_data = file.read(compressed_size)
+        
+        try:
+            decompressed = zlib.decompress(compressed_data)
+            print(f"Successfully decompressed {len(decompressed)} bytes")
+            return json.loads(decompressed)
+        except zlib.error as e:
+            print(f"Raw compressed data (first 100 bytes): {compressed_data[:100].hex()}")
+            raise ValueError(f"Decompression error: {e}")
+        
+    def extract_models(self, data: Dict[str, Any], base_path: str):
+        if not os.path.exists(base_path):
+            os.makedirs(base_path)
+            
+        def process_instance(instance: Dict[str, Any], path: str):
+            name = instance.get('Name', 'Unnamed')
+            class_name = instance.get('ClassName', '')
+            
+            if class_name in ['Model', 'Part', 'MeshPart']:
+                instance_path = os.path.join(path, f"{name}.json")
+                with open(instance_path, 'w') as f:
+                    json.dump(instance, f, indent=2)
+                    
+            if 'Children' in instance:
+                child_path = os.path.join(path, name)
+                if not os.path.exists(child_path):
+                    os.makedirs(child_path)
+                for child in instance['Children']:
+                    process_instance(child, child_path)
+                    
+        for instance in data.get('Instances', []):
+            process_instance(instance, base_path)
+            
+    def extract_scripts(self, data: Dict[str, Any], base_path: str):
+        if not os.path.exists(base_path):
+            os.makedirs(base_path)
+            
+        def process_instance(instance: Dict[str, Any], path: str):
+            if instance.get('ClassName') in ['Script', 'LocalScript', 'ModuleScript']:
+                name = instance.get('Name', 'Unnamed')
+                source = instance.get('Source', '')
+                script_path = os.path.join(path, f"{name}.lua")
+                
+                with open(script_path, 'w', encoding='utf-8') as f:
+                    f.write(source)
+                    
+            if 'Children' in instance:
+                for child in instance['Children']:
+                    process_instance(child, path)
+                    
+        for instance in data.get('Instances', []):
+            process_instance(instance, base_path)
+            
+    def extract_sounds(self, data: Dict[str, Any], base_path: str):
+        if not os.path.exists(base_path):
+            os.makedirs(base_path)
+            
+        def process_instance(instance: Dict[str, Any], path: str):
+            if instance.get('ClassName') == 'Sound':
+                name = instance.get('Name', 'Unnamed')
+                sound_id = instance.get('SoundId', '')
+                
+                if sound_id:
+                    # Here you would implement the logic to download the sound file
+                    # using the Roblox API or other methods
+                    sound_path = os.path.join(path, f"{name}.mp3")
+                    # TODO: Implement sound downloading
+                    
+            if 'Children' in instance:
+                for child in instance['Children']:
+                    process_instance(child, path)
+                    
+        for instance in data.get('Instances', []):
+            process_instance(instance, base_path)
+            
+    def extract_images(self, data: Dict[str, Any], base_path: str):
+        if not os.path.exists(base_path):
+            os.makedirs(base_path)
+            
+        def process_instance(instance: Dict[str, Any], path: str):
+            if instance.get('ClassName') in ['Decal', 'Texture']:
+                name = instance.get('Name', 'Unnamed')
+                texture_id = instance.get('TextureId', '')
+                
+                if texture_id:
+                    # Here you would implement the logic to download the image file
+                    # using the Roblox API or other methods
+                    image_path = os.path.join(path, f"{name}.png")
+                    # TODO: Implement image downloading
+                    
+            if 'Children' in instance:
+                for child in instance['Children']:
+                    process_instance(child, path)
+                    
+        for instance in data.get('Instances', []):
+            process_instance(instance, base_path)
+            
+    def extract(self, options: Dict[str, bool]):
+        try:
+            print(f"Starting extraction from file: {self.file_path}")
+            self.update_progress(0, "Reading RBXL file...")
+            
+            if not os.path.exists(self.file_path):
+                raise FileNotFoundError(f"RBXL file not found: {self.file_path}")
+                
+            with open(self.file_path, 'rb') as f:
+                # Read and verify file header
+                print("\nAnalyzing file structure...")
+                
+                # Try to read the complete header
+                header = f.read(16)  # Read more bytes for full header
+                
+                # Detailed header analysis
+                print(f"File header hex: {binascii.hexlify(header).decode()}")
+                print(f"File header bytes: {[b for b in header]}")
+                print(f"File header ascii: {header!r}")
+                
+                # Different possible Roblox headers
+                valid_headers = [
+                    b'<roblox!',
+                    b'<roblox\x89\xff\x0d\x0a\x1a\x0a',
+                    b'<roblox\x89\xff\r\n\x1a\n'
+                ]
+                
+                is_valid = any(header.startswith(h) for h in valid_headers)
+                if not is_valid:
+                    raise ValueError(f"Invalid RBXL file format: Unrecognized header format (got: {header!r})")
+                
+                print("RBXL header validation passed")
+                self.update_progress(10, "Parsing file structure...")
+                
+                try:
+                    model_data = self.decompress_model(f)
+                    print("Successfully decompressed model data")
+                except zlib.error as e:
+                    raise ValueError(f"Failed to decompress RBXL data: {e}")
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"Failed to parse RBXL data as JSON: {e}")
+                except struct.error as e:
+                    raise ValueError(f"Failed to read RBXL file structure: {e}")
+                
+                # Create output directories
+                os.makedirs(self.output_path, exist_ok=True)
+                
+                if options.get('models', False):
+                    print("Extracting models...")
+                    self.update_progress(30, "Extracting models...")
+                    models_path = os.path.join(self.output_path, "Models")
+                    self.extract_models(model_data, models_path)
+                    
+                if options.get('scripts', False):
+                    print("Extracting scripts...")
+                    self.update_progress(50, "Extracting scripts...")
+                    scripts_path = os.path.join(self.output_path, "Scripts")
+                    self.extract_scripts(model_data, scripts_path)
+                    
+                if options.get('sounds', False):
+                    print("Extracting sounds...")
+                    self.update_progress(70, "Extracting sounds...")
+                    sounds_path = os.path.join(self.output_path, "Sounds")
+                    self.extract_sounds(model_data, sounds_path)
+                    
+                if options.get('images', False):
+                    print("Extracting images...")
+                    self.update_progress(90, "Extracting images...")
+                    images_path = os.path.join(self.output_path, "Images")
+                    self.extract_images(model_data, images_path)
+                    
+                print("Extraction completed successfully")
+                self.update_progress(100, "Extraction complete!")
+                
+        except Exception as e:
+            print(f"Error during extraction: {str(e)}")
+            self.update_progress(0, f"Error: {str(e)}")
+            raise

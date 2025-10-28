@@ -1,0 +1,32 @@
+&lt;roblox xmlns:xmine="http://www.w3.org/2005/05/xmlmime" xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+    <External>null</External>
+    <External>nil</External>
+    <Item class="Workspace">
+        <Properties>
+            <string name="Name">Workspace</string>
+        </Properties>
+        <Item class="Model" referent="RBX0">
+            <Properties>
+                <string name="Name">TestModel</string>
+            </Properties>
+        </Item>
+        <Item class="Script" referent="RBX1">
+            <Properties>
+                <string name="Name">TestScript</string>
+                <ProtectedString name="Source">print("Hello World")</ProtectedString>
+            </Properties>
+        </Item>
+        <Item class="Sound" referent="RBX2">
+            <Properties>
+                <string name="Name">TestSound</string>
+                <string name="SoundId">rbxasset://sounds/electronicping.wav</string>
+            </Properties>
+        </Item>
+        <Item class="Decal" referent="RBX3">
+            <Properties>
+                <string name="Name">TestDecal</string>
+                <string name="Texture">rbxasset://textures/face.png</string>
+            </Properties>
+        </Item>
+    </Item>
+</roblox>

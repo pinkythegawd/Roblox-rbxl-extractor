@@ -1,0 +1,72 @@
+Story: Building the RBXL Binary Extractor
+
+This document describes the work performed to add direct binary RBXL parsing and robust heuristics to extract Lua scripts, images, and asset references.
+
+Beginning
+
+- Objective: Avoid requiring XML conversion and extract scripts/assets directly from binary .rbxl files.
+- Initial approach: Start with heuristics to find ASCII printable strings, embedded PNG/JPEG signatures, and ProtectedString blocks.
+
+Implementation and Iterations
+
+1) Heuristic extractor
+- Implemented functions to find PNG/JPEG signatures and write embedded images.
+- Added ASCII printable string extraction and heuristics for script detection:
+  - `extract_protected_strings_from_bytes` to find XML-like ProtectedString blocks inside the binary.
+  - `extract_lua_blocks_by_keywords` which searches for 'function' and expands outward until 'end' balances.
+  - `extract_merged_printable_blocks` which merges printable runs separated by small binary gaps.
+- Early runs produced many small fragments; iterated on heuristics thresholds (min lengths, gap sizes) to improve recall.
+
+2) Structured parser
+- Implemented `rbx_binary_parser.py` with a `BinaryReader` and `RBXBinaryParser`.
+- Implemented multi-strategy decompression (gzip, zlib, raw-deflate, skip small header) and added `RBX_PARSER_DEBUG` for diagnostics.
+- Added safety checks for chunk lengths to avoid mis-parsing corrupted files.
+- Implemented several ValueType handlers (string, bool, int32, float, double, Vector2/3, Color3, instance refs, shared/protected strings).
+- Parser was hardened to abort on per-chunk errors rather than crash the entire parse.
+
+3) Integration
+- `extract_from_binary` first attempts the structured parser to collect script properties; if that yields results, write them.
+- Heuristics run as fallback to ensure high recall even when structured parsing fails.
+
+4) Improvements
+- Deduplication: normalize and hash cleaned scripts; prefer the longest cleaned variant.
+- Filtering: stronger minimum length threshold (>=120 characters) unless strong Lua indicators are present.
+
+Errors and fixes
+
+- Packaging: removed an erroneous dependency (`tkinter`) from setup to allow editable install.
+- Decompression errors: zlib errors were common; added gzip/raw-deflate strategies and chunk-length guard to prevent reading invalid chunk sizes.
+- Parser returned 0 instances for some test RBXL files: heuristics still recovered scripts; further parser improvements are planned.
+
+How to use the program
+
+1) Setup
+- Create and activate Python venv (if not already):
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e .
+```
+
+2) Run the CLI
+
+```powershell
+python -m rbxl_extractor.cli "C:\path\to\Place_XXXXX.rbxl" --scripts --images --models
+```
+
+3) Output
+- Output will be in `C:\path\to\extracted` with subfolders `Scripts`, `Images`, `Models`, `References`.
+
+Developer notes
+
+- Enable parser debug logs with the environment variable `RBX_PARSER_DEBUG=1` to get per-chunk diagnostics.
+- The heuristics are intentionally permissive to maximize recall; further tuning can reduce false positives.
+
+Next steps
+
+- Expand parser value-type support (more RBX-specific types).
+- Improve class table/token handling in the parser to decode more RBXL variants.
+- Add unit/integration tests to assert expected extraction outcomes.
+
+End of story.
